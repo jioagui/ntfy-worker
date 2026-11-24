@@ -1,8 +1,8 @@
 {
   "name": "ntfy-worker",
-  "version": "1.2.0",
+  "version": "2.0.0",
   "private": false,
-  "description": "Tiny ntfy.sh-compatible publish/subscribe worker for Cloudflare Workers + Durable Objects.",
+  "description": "Tiny ntfy.sh & ntfy-android compatible publish/subscribe worker for Cloudflare Workers + SQLite Durable Objects.",
   "type": "module",
   "scripts": {
     "dev": "cf dev",

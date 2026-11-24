@@ -1,51 +1,41 @@
-# ntfy-worker
+# ntfy-worker (Android App Compatible Fork)
 
-A tiny, [ntfy.sh](https://ntfy.sh)-compatible publish/subscribe worker for
-Cloudflare Workers + Durable Objects. About 100 lines of JavaScript. Each
-topic gets its own Durable Object — subscribers connect over Server-Sent
-Events, publishers POST a body with optional ntfy-style headers. Every
-topic request requires a shared bearer token.
+A tiny, [ntfy.sh](https://ntfy.sh) & **ntfy Android App** compatible publish/subscribe worker for
+Cloudflare Workers + SQLite-backed Durable Objects. Forked from [jonnyparris/ntfy-worker](https://github.com/jonnyparris/ntfy-worker) with full Android client support and persistent storage.
 
-## Why
+## What's Added in This Fork
 
-Public `ntfy.sh` is great but you may want:
-
-- your own subdomain and rate limits
-- topics that aren't shared globally
-- auth, so random traffic can't publish or snoop
-- a self-contained piece you can hack on
-
-This worker is API-compatible enough that clients written against ntfy.sh
-keep working — point them at your worker's URL and add an `Authorization`
-header.
+- **ntfy Android App compatibility (`ntfy-android`)**:
+  - Multi-topic WebSocket subscription (`GET /:topics/ws`) using the **Cloudflare Durable Objects WebSocket Hibernation API** (minimal compute billing while idle).
+  - Standard NDJSON polling (`GET /:topics/json?poll=1&since=...`) and NDJSON streaming (`GET /:topics/json?since=...`) with 25s keepalives.
+  - Auth check endpoint (`GET /:topic/auth`).
+  - `POST /` JSON-body publishing and `PUT /:topic` query-parameter publishing (used by the Android app).
+  - Normalized ntfy message schema (`id`, `time`, `expires`, `event`, `topic`, integer `priority` `1-5`, string-array `tags`, `content_type: "text/markdown"`, structured `attachment` & `actions`).
+- **SQLite Durable Object persistence**:
+  - Stores up to 200 recent messages per topic (7-day retention) in Durable Object SQLite so offline devices catch up cleanly via `?since=<id|all|latest|duration|timestamp>`.
+- **Flexible fail-closed auth**:
+  - Supports `Authorization: Bearer <NTFY_TOKEN>`, `Authorization: Basic <base64(user:NTFY_TOKEN)>` (for ntfy Android's Manage Users), and `?auth=<base64>`.
+  - Constant-time comparison without length early-return; returns `503` if `NTFY_TOKEN` is unset.
+- **Portable config**:
+  - Removed the hardcoded upstream `accountId` from `cloudflare.config.ts`.
 
 ## Endpoints
 
-| Method  | Path             | Auth | Behaviour                                       |
-| ------- | ---------------- | ---- | ----------------------------------------------- |
-| `POST`  | `/:topic`        | ✓    | Publish a message. Body is the message text.   |
-| `GET`   | `/:topic`        | ✓    | Subscribe over Server-Sent Events.             |
-| `GET`   | `/:topic/json`   | ✓    | Last 100 messages on the topic (in-memory).    |
-| `GET`   | `/healthz`       | —    | Liveness check.                                 |
-| `GET`   | `/version`       | —    | Build version + deploy timestamp.               |
-| `GET`   | `/stats`         | —    | Light service stats.                            |
-
-Topics are created lazily on first publish. The unauthenticated paths
-exist so uptime checks and `/version` probes don't need the token.
+| Method | Path | Auth | Behaviour |
+| --- | --- | --- | --- |
+| `POST` / `PUT` | `/:topic` | ✓ | Publish a message (body + ntfy headers and/or query params). |
+| `POST` | `/` | ✓ | Publish a message via JSON body (`{ "topic": "...", "message": "...", ... }`). |
+| `GET` | `/:topics/auth` | ✓ | Auth check for ntfy clients (`200 { "success": true }`). |
+| `GET` | `/:topics/ws` | ✓ | Multi-topic WebSocket stream (`?since=none\|all\|latest\|<id>\|<ts>\|<duration>`). |
+| `GET` | `/:topics/json` | ✓ | NDJSON live stream, or one-shot NDJSON when `?poll=1`. |
+| `GET` | `/:topics/sse` / `/:topics` | ✓ | Server-Sent Events live stream. |
+| `GET` | `/healthz` | — | Liveness check. |
+| `GET` | `/version` | — | Build version + deploy timestamp. |
+| `GET` | `/stats` | — | Light service stats. |
 
 ## Auth
 
-Every topic request must send:
-
-```
-Authorization: Bearer <NTFY_TOKEN>
-```
-
-`NTFY_TOKEN` is a shared secret bound to the worker. Both publishers and
-subscribers use it. If the secret isn't configured the worker returns 503
-on every topic request — there is no anonymous mode.
-
-Set the token before first deploy:
+Set `NTFY_TOKEN` before deploying:
 
 ```bash
 # Generate a strong token
@@ -55,67 +45,60 @@ openssl rand -base64 32
 cf workers secrets update NTFY_TOKEN --worker ntfy-worker --type secret_text --text "<token>"
 ```
 
-For local development, copy `.dev.vars.example` to `.dev.vars` and fill in
-a value. `.dev.vars` is gitignored.
+Clients can authenticate using any of:
+- `Authorization: Bearer <NTFY_TOKEN>`
+- `Authorization: Basic <base64(any-username:NTFY_TOKEN)>` (used by **ntfy Android App → Settings → Manage users**)
+- `?auth=<base64(Basic ... | Bearer ...)>`
 
-Rotate by running the same `cf workers secrets update` command again. All clients have
-to update at the same time — there's intentionally no rolling window.
+## Using with the ntfy Android App
 
-## ntfy headers
+1. Install the official **ntfy** app (Google Play / F-Droid).
+2. Open **Settings → Manage users → Add new user**:
+   - **Service URL**: `https://<your-ntfy-domain>` (custom domain recommended)
+   - **Username**: any string (e.g. `ntfy`)
+   - **Password**: your `NTFY_TOKEN`
+3. *(Recommended)* Under **Settings → Connection protocol**, select **WebSockets** for reliable instant delivery and Durable Object hibernation.
+4. Subscribe to any topic using your server URL and enable **Instant delivery** if you want background push alerts (or pull down to refresh anytime to catch up via SQLite history).
 
-Recognised on `POST`:
-
-`X-Title`, `X-Priority`, `X-Tags`, `X-Click`, `X-Actions`, `X-Markdown`,
-`X-Icon`, `X-Attach`.
-
-Each is also accepted without the `X-` prefix (`Title`, `Priority`,
-etc.) — public ntfy.sh works this way, and clients in the wild send
-both forms. The `X-` form wins when both are present.
-
-## Quick start
+## Quick Start
 
 ```bash
-git clone https://github.com/jonnyparris/ntfy-worker.git
+git clone https://github.com/jioagui/ntfy-worker.git
 cd ntfy-worker
 npm install
 cf workers secrets update NTFY_TOKEN --worker ntfy-worker --type secret_text --text "<token>"
 npm run deploy
 ```
 
-Publish a message:
+### Publish a Message
 
 ```bash
-TOKEN="..."  # the value you set above
-curl -d "hello world" \
-     -H "Authorization: Bearer $TOKEN" \
-     -H "X-Title: greetings" \
-     https://ntfy-worker.<your-subdomain>.workers.dev/my-topic
+TOKEN="..."
+curl -X POST \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "X-Title: Deployment" \
+  -H "X-Priority: high" \
+  -H "X-Tags: rocket,white_check_mark" \
+  -d "Build succeeded" \
+  https://<your-worker-url>/alerts
 ```
 
-Subscribe from another terminal:
+Or via JSON body (`POST /`):
+
+```bash
+curl -X POST \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"topic":"alerts","title":"Deployment","message":"Build succeeded","priority":4,"tags":["rocket"]}' \
+  https://<your-worker-url>/
+```
+
+### Poll Missed Messages (NDJSON)
 
 ```bash
 curl -H "Authorization: Bearer $TOKEN" \
-     https://ntfy-worker.<your-subdomain>.workers.dev/my-topic
+  "https://<your-worker-url>/alerts/json?poll=1&since=all"
 ```
-
-## Use with Dodo
-
-[Dodo](https://github.com/cloudflare/dodo) fires push notifications when
-worker runs change state. Two env vars:
-
-- `NTFY_BASE_URL` — your deployed worker URL, e.g.
-  `https://ntfy-worker.<your-subdomain>.workers.dev`
-- `NTFY_TOKEN` — the bearer token
-
-Dodo sends `Authorization: Bearer ${NTFY_TOKEN}` on every publish.
-
-## Storage caveat
-
-History and subscriber state live in the Durable Object's memory. They
-survive idle eviction (the DO rehydrates) but not deliberate deletion or
-the in-memory ring being trimmed past 100 messages. If you want durable
-history, swap `this.history` for `this.state.storage.put(...)`.
 
 ## License
 

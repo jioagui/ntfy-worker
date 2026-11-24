@@ -1,7 +1,8 @@
 import { bindings, defineConfig, exports } from "cf/config";
 
 export default defineConfig({
-	accountId: "4b430e167a301330d13a9bb42f3986a2", // jonnyparris
+	// Optional: pin your own Cloudflare accountId if you have multiple accounts.
+	// accountId: "<your-cloudflare-account-id>",
 	worker: {
 		name: "ntfy-worker",
 		compatibilityDate: "2025-01-01",
@@ -17,8 +18,6 @@ export default defineConfig({
 				exportName: "TopicRoom",
 			}),
 		},
-		// Replaces Wrangler `migrations`. The provisioned namespace is SQLite even
-		// though the old config said `new_classes`. cf checks this before deploy.
 		exports: {
 			TopicRoom: exports.durableObject({ storage: "sqlite" }),
 		},
