@@ -16,8 +16,9 @@ Cloudflare Workers + SQLite-backed Durable Objects. Forked from [jonnyparris/ntf
 - **Flexible fail-closed auth**:
   - Supports `Authorization: Bearer <NTFY_TOKEN>`, `Authorization: Basic <base64(user:NTFY_TOKEN)>` (for ntfy Android's Manage Users), and `?auth=<base64>`.
   - Constant-time comparison without length early-return; returns `503` if `NTFY_TOKEN` is unset.
-- **Portable config**:
+- **Portable config & Agent Deployment Skill**:
   - Removed the hardcoded upstream `accountId` from `cloudflare.config.ts`.
+  - Bundled [`.agents/skills/deploy-ntfy-worker/SKILL.md`](.agents/skills/deploy-ntfy-worker/SKILL.md) with automated deployment steps and real-world troubleshooting guidance (custom domains, same-zone Worker Error 1042, Android HTTP/2 NAT drops vs WebSockets, etc.).
 
 ## Endpoints
 
@@ -54,10 +55,10 @@ Clients can authenticate using any of:
 
 1. Install the official **ntfy** app (Google Play / F-Droid).
 2. Open **Settings → Manage users → Add new user**:
-   - **Service URL**: `https://<your-ntfy-domain>` (custom domain recommended)
+   - **Service URL**: `https://<your-ntfy-domain>` (custom domain recommended; avoid `*.workers.dev` on networks with DNS pollution, and omit trailing `/`)
    - **Username**: any string (e.g. `ntfy`)
    - **Password**: your `NTFY_TOKEN`
-3. *(Recommended)* Under **Settings → Connection protocol**, select **WebSockets** for reliable instant delivery and Durable Object hibernation.
+3. *(Recommended)* Under **Settings → Connection protocol**, select **WebSockets** to avoid mobile carrier NAT drops on HTTP/2 streams and leverage Durable Object WebSocket Hibernation.
 4. Subscribe to any topic using your server URL and enable **Instant delivery** if you want background push alerts (or pull down to refresh anytime to catch up via SQLite history).
 
 ## Quick Start
@@ -69,6 +70,8 @@ npm install
 cf workers secrets update NTFY_TOKEN --worker ntfy-worker --type secret_text --text "<token>"
 npm run deploy
 ```
+
+> **AI Agent Deployment:** This repo includes a ready-to-use workspace skill at [`.agents/skills/deploy-ntfy-worker/SKILL.md`](.agents/skills/deploy-ntfy-worker/SKILL.md) covering zero-dependency Cloudflare MCP deployment, custom domains, same-zone Worker integration (`global_fetch_strictly_public`), and Android troubleshooting.
 
 ### Publish a Message
 
